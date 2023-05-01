@@ -2,7 +2,7 @@
 #define DRAWING3D_H
 
 #define VERTEXBUFFER_SIZE (0x1000)
-#define FACEBUFFER_SIZE (0x400)
+#define FACEBUFFER_SIZE   (0x400)
 
 enum FaceFlags {
     FACE_FLAG_TEXTURED_3D = 0,
@@ -13,8 +13,8 @@ enum FaceFlags {
 
 enum MatrixTypes {
     MAT_WORLD = 0,
-    MAT_VIEW = 1,
-    MAT_TEMP = 2,
+    MAT_VIEW  = 1,
+    MAT_TEMP  = 2,
 };
 
 struct Matrix {
@@ -67,20 +67,20 @@ extern int faceLineEndU[SCREEN_YSIZE];
 extern int faceLineStartV[SCREEN_YSIZE];
 extern int faceLineEndV[SCREEN_YSIZE];
 
-void setIdentityMatrix(Matrix *matrix);
-void matrixMultiply(Matrix *matrixA, Matrix *matrixB);
-void matrixTranslateXYZ(Matrix *Matrix, int XPos, int YPos, int ZPos);
-void matrixScaleXYZ(Matrix *matrix, int scaleX, int scaleY, int scaleZ);
-void matrixRotateX(Matrix *matrix, int rotationX);
-void matrixRotateY(Matrix *matrix, int rotationY);
-void matrixRotateZ(Matrix *matrix, int rotationZ);
-void matrixRotateXYZ(Matrix *matrix, int rotationX, int rotationY, int rotationZ);
-void transformVertexBuffer();
-void transformVerticies(Matrix *matrix, int startIndex, int endIndex);
-void sort3DDrawList();
-void draw3DScene(int spriteSheetID);
+void SetIdentityMatrix(Matrix *matrix);
+void MatrixMultiply(Matrix *matrixA, Matrix *matrixB);
+void MatrixTranslateXYZ(Matrix *Matrix, int x, int y, int z);
+void MatrixScaleXYZ(Matrix *matrix, int scaleX, int scaleY, int scaleZ);
+void MatrixRotateX(Matrix *matrix, int rotationX);
+void MatrixRotateY(Matrix *matrix, int rotationY);
+void MatrixRotateZ(Matrix *matrix, int rotationZ);
+void MatrixRotateXYZ(Matrix *matrix, int rotationX, int rotationY, int rotationZ);
+void TransformVertexBuffer();
+void TransformVerticies(Matrix *matrix, int startIndex, int endIndex);
+void Sort3DDrawList();
+void Draw3DScene(int spriteSheetID);
 
-void processScanEdge(Vertex *vertA, Vertex *vertB);
-void processScanEdgeUV(Vertex *vertA, Vertex *vertB);
+void ProcessScanEdge(Vertex *vertA, Vertex *vertB);
+void ProcessScanEdgeUV(Vertex *vertA, Vertex *vertB);
 
 #endif // !DRAWING3D_H

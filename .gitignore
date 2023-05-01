@@ -18,7 +18,6 @@ SonicCD.Vita/Makefile
 *.user
 *.userosscache
 *.sln.docstates
-*.swp
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -36,9 +35,21 @@ bin/
 [Bb]in/
 [Oo]bj/
 
-#safety
+#Safety
 *.rsdk
 *.ogv
+
+# Visual Studio Debugging
+RSDKv3/[Dd]ata/
+RSDKv3/[Mm]ods/
+RSDKv3/[Ss]cripts/
+RSDKv3/[Vv]ideos/
+RSDKv3/log.txt
+RSDKv3/usage.txt
+RSDKv3/[Ss]ettings.ini
+RSDKv3/[Ss][Dd]ata.bin
+RSDKv3/[Ss][Gg]ame.bin
+RSDKv3/[Uu][Dd]ata.bin
 
 #OSX files
 *.DS_Store
@@ -71,6 +82,7 @@ bin/
 [Dd]ependencies/ios/libSDLMain.a
 ![Dd]ependencies/ios/[Ii]nfo.plist
 [Dd]ependencies/all/*
+![Dd]ependencies/all/tinyxml2
 ![Dd]ependencies/all/dependencies.txt
 ![Dd]ependencies/windows/dependencies.txt
 ![Dd]ependencies/ios/dependencies.txt
@@ -79,9 +91,9 @@ bin/
 ![Dd]ependencies/android/dependencies.txt
 ![Dd]ependencies/android/libogg/include/ogg/config_types.h
 
-SonicCDDecompUWP/Generated Files
-SonicCDDecompUWP/BundleArtifacts
-SonicCDDecompUWP/Assets/*.png
+RSDKv3UWP/Generated Files
+RSDKv3UWP/BundleArtifacts
+RSDKv3UWP/Assets/*.png
 
 # Visual Studio 2015 cache/options directory
 .vs/
@@ -279,3 +291,9 @@ Ignored/
 .idea/
 android/key/
 android/local.properties
+*.apk
+
+# Linux
+.flatpak-builder
+flatpak/*.apk
+build-dir

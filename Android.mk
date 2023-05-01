@@ -78,6 +78,8 @@ LOCAL_MODULE := main
 SDL_PATH := ../SDL
 
 LOCAL_CFLAGS   := -fexceptions
+LOCAL_CPPFLAGS :=  -std=c++17
+APP_CPPFLAGS :=  -std=c++17
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/$(SDL_PATH)/include \
@@ -86,16 +88,18 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/$(OGG_DIR)/include \
     $(LOCAL_PATH)/$(THEORA_DIR)/include \
     $(LOCAL_PATH)/dependencies/all/theoraplay \
+    $(LOCAL_PATH)/dependencies/all/tinyxml2 \
 
 
 WILDCARD_SETUP := \
   $(wildcard $(LOCAL_PATH)/dependencies/all/theoraplay/*.c) \
+  $(wildcard $(LOCAL_PATH)/dependencies/all/tinyxml2/*.cpp) \
   $(wildcard $(LOCAL_PATH)/RSDKv3/*.cpp)
 
 LOCAL_SRC_FILES := $(subst jni/src/, , $(WILDCARD_SETUP))
 
-LOCAL_SHARED_LIBRARIES := SDL2 libogg libvorbis libtheora
+LOCAL_LDLIBS := -lGLESv1_CM -llog
 
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog
+LOCAL_SHARED_LIBRARIES := SDL2 libogg libvorbis libtheora
 
 include $(BUILD_SHARED_LIBRARY)

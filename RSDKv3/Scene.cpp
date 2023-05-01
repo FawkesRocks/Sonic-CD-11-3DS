@@ -13,8 +13,8 @@ SceneInfo stageList[STAGELIST_MAX][0x100];
 int stageMode = STAGEMODE_LOAD;
 
 int cameraTarget   = -1;
-int cameraStyle    = 0;
-int cameraEnabled  = 0;
+int cameraStyle    = CAMERASTYLE_FOLLOW;
+int cameraEnabled  = false;
 int cameraAdjustY  = 0;
 int xScrollOffset  = 0;
 int yScrollOffset  = 0;
@@ -48,7 +48,7 @@ int lastXSize = -1;
 bool pauseEnabled     = true;
 bool timeEnabled      = true;
 bool debugMode        = false;
-int frameCounter        = 0;
+int frameCounter      = 0;
 int stageMilliseconds = 0;
 int stageSeconds      = 0;
 int stageMinutes      = 0;
@@ -79,8 +79,13 @@ CollisionMasks collisionMasks[2];
 
 byte tilesetGFXData[TILESET_SIZE];
 
-ushort tile3DFloorBuffer[0x13334];
+ushort tile3DFloorBuffer[0x100 * 0x100];
 bool drawStageGFXHQ = false;
+
+#if RETRO_USE_MOD_LOADER
+bool loadGlobalScripts = false; // stored here so I can use it later
+int globalObjCount     = 0;
+#endif
 
 void InitFirstStage()
 {
@@ -95,29 +100,29 @@ void InitFirstStage()
     ClearAnimationData();
     activePalette = fullPalette[0];
     LoadPalette("MasterPalette.act", 0, 0, 0, 256);
-    stageMode         = STAGEMODE_LOAD;
-    Engine.gameMode   = ENGINE_MAINGAME;
-    //activeStageList   = 0;
-    //stageListPosition = 0;
-    activeStageList   = Engine.startList;
-    stageListPosition = Engine.startStage;
+#if RETRO_USE_MOD_LOADER
+    Engine.LoadXMLPalettes();
+#endif
+    stageMode       = STAGEMODE_LOAD;
+    Engine.gameMode = ENGINE_MAINGAME;
+    // activeStageList   = 0;
+    // stageListPosition = 0;
+    activeStageList   = Engine.startList_Game == 0xFF ? 0 : Engine.startList_Game;
+    stageListPosition = Engine.startStage_Game == 0xFF ? 0 : Engine.startStage_Game;
 }
 
 void ProcessStage(void)
 {
-    switch (stageMode) {
-        case STAGEMODE_LOAD: // Startup
-#if RETRO_USING_C2D
-    _3ds_delTileSurface();
+#if !RETRO_USE_ORIGINAL_CODE
+    debugHitboxCount = 0;
 #endif
 
-#if RETRO_USING_SDLMIXER
-    FreeAllMusic();
-#endif
+    switch (stageMode) {
+        case STAGEMODE_LOAD: // Startup
             fadeMode = 0;
             SetActivePalette(0, 0, 256);
 
-            cameraEnabled = 1;
+            cameraEnabled = true;
             cameraTarget  = -1;
             cameraAdjustY = 0;
             xScrollOffset = 0;
@@ -133,11 +138,26 @@ void ProcessStage(void)
             vertexCount = 0;
             faceCount   = 0;
             for (int i = 0; i < PLAYER_COUNT; ++i) {
-                MEM_ZERO(playerList[i]);
-                playerList[i].visible            = 1;
+                playerList[i].XPos               = 0;
+                playerList[i].YPos               = 0;
+                playerList[i].XVelocity          = 0;
+                playerList[i].YVelocity          = 0;
+                playerList[i].angle              = 0;
+                playerList[i].visible            = true;
+                playerList[i].collisionPlane     = 0;
+                playerList[i].collisionMode      = 0;
                 playerList[i].gravity            = 1; // Air
+                playerList[i].speed              = 0;
                 playerList[i].tileCollisions     = true;
                 playerList[i].objectInteractions = true;
+                playerList[i].values[0]          = 0;
+                playerList[i].values[1]          = 0;
+                playerList[i].values[2]          = 0;
+                playerList[i].values[3]          = 0;
+                playerList[i].values[4]          = 0;
+                playerList[i].values[5]          = 0;
+                playerList[i].values[6]          = 0;
+                playerList[i].values[7]          = 0;
             }
             pauseEnabled      = false;
             timeEnabled       = false;
@@ -147,52 +167,55 @@ void ProcessStage(void)
             stageMinutes      = 0;
             Engine.frameCount = 0;
             stageMode         = STAGEMODE_NORMAL;
+#if RETRO_USE_MOD_LOADER
+            for (int m = 0; m < modList.size(); ++m) ScanModFolder(&modList[m]);
+#endif
             ResetBackgroundSettings();
             LoadStageFiles();
 
-#if RETRO_HARDWARE_RENDER && !RETRO_USING_C2D
-            texBufferMode = 0;
-            for (int i = 0; i < LAYER_COUNT; i++) {
-                if (stageLayouts[i].type == LAYER_3DSKY)
-                    texBufferMode = 1;
-            }
-            for (int i = 0; i < hParallax.entryCount; i++) {
-                if (hParallax.deform[i]) 
-                    texBufferMode = 1;
-            }
-
-            if (tilesetGFXData[0x32002] > 0)
+            if (renderType == RENDER_HW) {
                 texBufferMode = 0;
-
-            if (texBufferMode) {
-                for (int i = 0; i < TILEUV_SIZE; i += 4) {
-                    tileUVArray[i + 0] = (i >> 2) % 28 * 18 + 1;
-                    tileUVArray[i + 1] = (i >> 2) / 28 * 18 + 1;
-                    tileUVArray[i + 2] = tileUVArray[i + 0] + 16;
-                    tileUVArray[i + 3] = tileUVArray[i + 1] + 16;
+                for (int i = 0; i < LAYER_COUNT; i++) {
+                    if (stageLayouts[i].type == LAYER_3DSKY)
+                        texBufferMode = 1;
                 }
-                tileUVArray[TILEUV_SIZE - 4] = 487.0f;
-                tileUVArray[TILEUV_SIZE - 3] = 487.0f;
-                tileUVArray[TILEUV_SIZE - 2] = 503.0f;
-                tileUVArray[TILEUV_SIZE - 1] = 503.0f;
-            }
-            else {
-                for (int i = 0; i < TILEUV_SIZE; i += 4) {
-                    tileUVArray[i + 0] = (i >> 2 & 31) * 16;
-                    tileUVArray[i + 1] = (i >> 2 >> 5) * 16;
-                    tileUVArray[i + 2] = tileUVArray[i + 0] + 16;
-                    tileUVArray[i + 3] = tileUVArray[i + 1] + 16;
+                for (int i = 0; i < hParallax.entryCount; i++) {
+                    if (hParallax.deform[i])
+                        texBufferMode = 1;
                 }
+
+                if (tilesetGFXData[0x32002] > 0)
+                    texBufferMode = 0;
+
+                if (texBufferMode) {  // 3D Sky/HParallax version
+                    for (int i = 0; i < TILEUV_SIZE; i += 4) {
+                        tileUVArray[i + 0] = ((i >> 2) % 28) * 18 + 1;
+                        tileUVArray[i + 1] = ((i >> 2) / 28) * 18 + 1;
+                        tileUVArray[i + 2] = tileUVArray[i + 0] + 16;
+                        tileUVArray[i + 3] = tileUVArray[i + 1] + 16;
+                    }
+                    tileUVArray[TILEUV_SIZE - 4] = 487;
+                    tileUVArray[TILEUV_SIZE - 3] = 487;
+                    tileUVArray[TILEUV_SIZE - 2] = 503;
+                    tileUVArray[TILEUV_SIZE - 1] = 503;
+                }
+                else { // Regular tileset version
+                    for (int i = 0; i < TILEUV_SIZE; i += 4) {
+                        tileUVArray[i + 0] = (i >> 2 & 31) * 16;
+                        tileUVArray[i + 1] = (i >> 2 >> 5) * 16;
+                        tileUVArray[i + 2] = tileUVArray[i + 0] + 16;
+                        tileUVArray[i + 3] = tileUVArray[i + 1] + 16;
+                    }
+                }
+
+                UpdateHardwareTextures();
+                gfxIndexSize        = 0;
+                gfxVertexSize       = 0;
+                gfxIndexSizeOpaque  = 0;
+                gfxVertexSizeOpaque = 0;
             }
-
-            UpdateHardwareTextures();
-            gfxIndexSize        = 0;
-            gfxVertexSize       = 0;
-            gfxIndexSizeOpaque  = 0;
-            gfxVertexSizeOpaque = 0;
-#endif
-
             break;
+
         case STAGEMODE_NORMAL:
             drawStageGFXHQ = false;
             if (fadeMode > 0)
@@ -223,9 +246,9 @@ void ProcessStage(void)
                 }
                 stageMilliseconds = 100 * frameCounter / Engine.refreshRate;
             }
-			else {
-				frameCounter = Engine.refreshRate * stageMilliseconds / 100;
-			}
+            else {
+                frameCounter = Engine.refreshRate * stageMilliseconds / 100;
+            }
 
             // Update
             ProcessObjects();
@@ -233,11 +256,11 @@ void ProcessStage(void)
             if (cameraTarget > -1) {
                 if (cameraEnabled == 1) {
                     switch (cameraStyle) {
-                        case 0: SetPlayerScreenPosition(&playerList[cameraTarget]); break;
-                        case 1: SetPlayerScreenPositionCDStyle(&playerList[cameraTarget]); break;
-                        case 2: SetPlayerScreenPositionCDStyle(&playerList[cameraTarget]); break;
-                        case 3: SetPlayerScreenPositionCDStyle(&playerList[cameraTarget]); break;
-                        case 4: SetPlayerHLockedScreenPosition(&playerList[cameraTarget]); break;
+                        case CAMERASTYLE_FOLLOW: SetPlayerScreenPosition(&playerList[cameraTarget]); break;
+                        case CAMERASTYLE_EXTENDED:
+                        case CAMERASTYLE_EXTENDED_OFFSET_L:
+                        case CAMERASTYLE_EXTENDED_OFFSET_R: SetPlayerScreenPositionCDStyle(&playerList[cameraTarget]); break;
+                        case CAMERASTYLE_HLOCKED: SetPlayerHLockedScreenPosition(&playerList[cameraTarget]); break;
                         default: break;
                     }
                 }
@@ -248,6 +271,7 @@ void ProcessStage(void)
 
             DrawStageGFX();
             break;
+
         case STAGEMODE_PAUSED:
             drawStageGFXHQ = false;
             if (fadeMode > 0)
@@ -265,12 +289,12 @@ void ProcessStage(void)
             // Update
             ProcessPausedObjects();
 
-#if RETRO_HARDWARE_RENDER && !RETRO_USING_C2D
-            gfxIndexSize        = 0;
-            gfxVertexSize       = 0;
-            gfxIndexSizeOpaque  = 0;
-            gfxVertexSizeOpaque = 0;
-#endif
+            if (renderType == RENDER_HW) {
+                gfxIndexSize        = 0;
+                gfxVertexSize       = 0;
+                gfxIndexSizeOpaque  = 0;
+                gfxVertexSizeOpaque = 0;
+            }
 
             DrawObjectList(0);
             DrawObjectList(1);
@@ -278,7 +302,17 @@ void ProcessStage(void)
             DrawObjectList(3);
             DrawObjectList(4);
             DrawObjectList(5);
+#if !RETRO_USE_ORIGINAL_CODE
+            // Hacky fix for Tails Object not working properly on non-Origins bytecode
+            if (!Engine.usingBytecode || GetGlobalVariableByName("NOTIFY_1P_VS_SELECT") != 0)
+#endif
+                DrawObjectList(7); // Extra Origins draw list (who knows why it comes before 6)
             DrawObjectList(6);
+
+#if !RETRO_USE_ORIGINAL_CODE
+            DrawDebugOverlays();
+#endif
+
             if (pauseEnabled && keyPress.start) {
                 stageMode = STAGEMODE_NORMAL;
                 ResumeSound();
@@ -295,25 +329,32 @@ void LoadStageFiles(void)
     FileInfo info;
     byte fileBuffer  = 0;
     byte fileBuffer2 = 0;
-    int scriptID    = 1;
+    int scriptID     = 1;
     char strBuffer[0x100];
 
     if (!CheckCurrentStageFolder(stageListPosition)) {
-#if RETRO_USING_SDLMIXER
-        ReleaseStageSfx();
-#endif
-        printLog("Loading Scene %s - %s", stageListNames[activeStageList], stageList[activeStageList][stageListPosition].name);
+        PrintLog("Loading Scene %s - %s", stageListNames[activeStageList], stageList[activeStageList][stageListPosition].name);
         ReleaseStageSfx();
         LoadPalette("MasterPalette.act", 0, 0, 0, 256);
+#if RETRO_USE_MOD_LOADER
+        Engine.LoadXMLPalettes();
+#endif
         ClearScriptData();
-        for (int i = SPRITESHEETS_MAX; i > 0; i--) RemoveGraphicsFile((char *)"", i - 1);
+        for (int i = SURFACE_COUNT; i > 0; i--) RemoveGraphicsFile((char *)"", i - 1);
 
-        bool loadGlobals = false;
+#if RETRO_USE_MOD_LOADER
+        loadGlobalScripts = false;
+#else
+        bool loadGlobalScripts = false;
+#endif
         if (LoadStageFile("StageConfig.bin", stageListPosition, &info)) {
-            FileRead(&loadGlobals, 1);
+            byte buf = 0;
+            FileRead(&buf, 1);
+            loadGlobalScripts = buf;
             CloseFile();
         }
-        if (loadGlobals && LoadFile("Data/Game/GameConfig.bin", &info)) {
+
+        if (loadGlobalScripts && LoadFile("Data/Game/GameConfig.bin", &info)) {
             FileRead(&fileBuffer, 1);
             FileRead(&strBuffer, fileBuffer);
             FileRead(&fileBuffer, 1);
@@ -331,6 +372,13 @@ void LoadStageFiles(void)
             }
 
 #if RETRO_USE_MOD_LOADER
+            for (byte i = 0; i < modObjCount && loadGlobalScripts; ++i) {
+                SetObjectTypeName(modTypeNames[i], globalObjectCount + i + 1);
+            }
+#endif
+
+#if RETRO_USE_COMPILER
+#if RETRO_USE_MOD_LOADER
             char scriptPath[0x40];
             if (Engine.bytecodeMode == BYTECODE_MOBILE)
                 StrCopy(scriptPath, "Data/Scripts/ByteCode/GlobalCode.bin");
@@ -340,6 +388,7 @@ void LoadStageFiles(void)
             bool bytecodeExists = false;
             FileInfo bytecodeInfo;
             GetFileInfo(&infoStore);
+            CloseFile();
             if (LoadFile(scriptPath, &info)) {
                 bytecodeExists = true;
                 CloseFile();
@@ -369,7 +418,28 @@ void LoadStageFiles(void)
                         return;
                 }
             }
+#else
+            GetFileInfo(&infoStore);
             CloseFile();
+            LoadBytecode(4, scriptID);
+            scriptID += globalObjectCount;
+            SetFileInfo(&infoStore);
+#endif
+            CloseFile();
+
+#if RETRO_USE_MOD_LOADER && RETRO_USE_COMPILER
+            globalObjCount = globalObjectCount;
+            for (byte i = 0; i < modObjCount && loadGlobalScripts; ++i) {
+                SetObjectTypeName(modTypeNames[i], scriptID);
+
+                GetFileInfo(&infoStore);
+                CloseFile();
+                ParseScriptFile(modScriptPaths[i], scriptID++);
+                SetFileInfo(&infoStore);
+                if (Engine.gameMode == ENGINE_SCRIPTERROR)
+                    return;
+            }
+#endif
         }
 
         if (LoadStageFile("StageConfig.bin", stageListPosition, &info)) {
@@ -388,6 +458,8 @@ void LoadStageFiles(void)
                 strBuffer[fileBuffer2] = 0;
                 SetObjectTypeName(strBuffer, scriptID + i);
             }
+
+#if RETRO_USE_COMPILER
 #if RETRO_USE_MOD_LOADER
             char scriptPath[0x40];
             if (Engine.bytecodeMode == BYTECODE_MOBILE) {
@@ -415,9 +487,11 @@ void LoadStageFiles(void)
                     scriptPath[pos + 4] = stageListPosition % 10 + '0';
                 }
             }
+
             bool bytecodeExists = false;
             FileInfo bytecodeInfo;
             GetFileInfo(&infoStore);
+            CloseFile();
             if (LoadFile(scriptPath, &info)) {
                 bytecodeExists = true;
                 CloseFile();
@@ -451,6 +525,17 @@ void LoadStageFiles(void)
                         return;
                 }
             }
+#else
+            for (byte i = 0; i < stageObjectCount; ++i) {
+                FileRead(&fileBuffer2, 1);
+                FileRead(strBuffer, fileBuffer2);
+                strBuffer[fileBuffer2] = 0;
+            }
+            GetFileInfo(&infoStore);
+            CloseFile();
+            LoadBytecode(activeStageList, scriptID);
+            SetFileInfo(&infoStore);
+#endif
 
             FileRead(&fileBuffer2, 1);
             stageSFXCount = fileBuffer2;
@@ -462,6 +547,9 @@ void LoadStageFiles(void)
                 CloseFile();
                 LoadSfx(strBuffer, globalSFXCount + i);
                 SetFileInfo(&infoStore);
+#if RETRO_USE_MOD_LOADER
+                SetSfxName(strBuffer, i, false);
+#endif
             }
             CloseFile();
         }
@@ -473,55 +561,27 @@ void LoadStageFiles(void)
         else {
             LoadStageGFXFile(stageListPosition);
         }
-
         LoadStageCollisions();
         LoadStageBackground();
     }
     else {
-        printLog("Reloading Scene %s - %s", stageListNames[activeStageList], stageList[activeStageList][stageListPosition].name);
+        PrintLog("Reloading Scene %s - %s", stageListNames[activeStageList], stageList[activeStageList][stageListPosition].name);
     }
     LoadStageChunks();
     for (int i = 0; i < TRACK_COUNT; ++i) SetMusicTrack((char *)"", i, 0, 0);
     for (int i = 0; i < ENTITY_COUNT; ++i) {
-        objectEntityList[i].type           = 0;
-        objectEntityList[i].direction      = 0;
-        objectEntityList[i].animation      = 0;
-        objectEntityList[i].prevAnimation  = 0;
-        objectEntityList[i].animationSpeed = 0;
-        objectEntityList[i].animationTimer = 0;
-        objectEntityList[i].frame          = 0;
-        objectEntityList[i].priority       = 0;
-        objectEntityList[i].direction      = 0;
-        objectEntityList[i].rotation       = 0;
-        objectEntityList[i].state          = 0;
-        objectEntityList[i].propertyValue  = 0;
-        objectEntityList[i].XPos           = 0;
-        objectEntityList[i].YPos           = 0;
-        objectEntityList[i].drawOrder      = 3;
-        objectEntityList[i].scale          = 512;
-        objectEntityList[i].inkEffect      = 0;
-        objectEntityList[i].values[0]      = 0;
-        objectEntityList[i].values[1]      = 0;
-        objectEntityList[i].values[2]      = 0;
-        objectEntityList[i].values[3]      = 0;
-        objectEntityList[i].values[4]      = 0;
-        objectEntityList[i].values[5]      = 0;
-        objectEntityList[i].values[6]      = 0;
-        objectEntityList[i].values[7]      = 0;
+        memset(&objectEntityList[i], 0, sizeof(objectEntityList[i]));
+
+        objectEntityList[i].drawOrder = 3;
+        objectEntityList[i].scale     = 512;
     }
     LoadActLayout();
     Init3DFloorBuffer(0);
     ProcessStartupObjects();
     xScrollA = (playerList[0].XPos >> 16) - SCREEN_CENTERX;
-    xScrollB                 = (playerList[0].XPos >> 16) - SCREEN_CENTERX + SCREEN_XSIZE;
+    xScrollB = (playerList[0].XPos >> 16) - SCREEN_CENTERX + SCREEN_XSIZE;
     yScrollA = (playerList[0].YPos >> 16) - SCREEN_SCROLL_UP;
-    yScrollB                 = (playerList[0].YPos >> 16) - SCREEN_SCROLL_UP + SCREEN_YSIZE;
-#if RETRO_USING_C2D
-    _3ds_cacheTileSurface(tilesetGFXData);
-    gfxSet3D(true);
-#endif
-
-
+    yScrollB = (playerList[0].YPos >> 16) - SCREEN_SCROLL_UP + SCREEN_YSIZE;
 }
 int LoadActFile(const char *ext, int stageID, FileInfo *info)
 {
@@ -565,24 +625,24 @@ void LoadActLayout()
         FileRead(activeTileLayers, 4);
         FileRead(&tLayerMidPoint, 1);
 
-        FileRead(&stageLayouts[0].width, 1);
-        FileRead(&stageLayouts[0].height, 1);
+        FileRead(&stageLayouts[0].xsize, 1);
+        FileRead(&stageLayouts[0].ysize, 1);
         xBoundary1    = 0;
         newXBoundary1 = 0;
         yBoundary1    = 0;
         newYBoundary1 = 0;
-        xBoundary2    = stageLayouts[0].width << 7;
-        yBoundary2    = stageLayouts[0].height << 7;
+        xBoundary2    = stageLayouts[0].xsize << 7;
+        yBoundary2    = stageLayouts[0].ysize << 7;
         waterLevel    = yBoundary2 + 128;
-        newXBoundary2 = stageLayouts[0].width << 7;
-        newYBoundary2 = stageLayouts[0].height << 7;
+        newXBoundary2 = stageLayouts[0].xsize << 7;
+        newYBoundary2 = stageLayouts[0].ysize << 7;
 
         for (int i = 0; i < 0x10000; ++i) stageLayouts[0].tiles[i] = 0;
 
         byte fileBuffer = 0;
-        for (int y = 0; y < stageLayouts[0].height; ++y) {
+        for (int y = 0; y < stageLayouts[0].ysize; ++y) {
             ushort *tiles = &stageLayouts[0].tiles[(y * 0x100)];
-            for (int x = 0; x < stageLayouts[0].width; ++x) {
+            for (int x = 0; x < stageLayouts[0].xsize; ++x) {
                 FileRead(&fileBuffer, 1);
                 tiles[x] = fileBuffer << 8;
                 FileRead(&fileBuffer, 1);
@@ -606,10 +666,28 @@ void LoadActLayout()
         int ObjectCount = fileBuffer;
         FileRead(&fileBuffer, 1);
         ObjectCount = (ObjectCount << 8) + fileBuffer;
+
+#if !RETRO_USE_ORIGINAL_CODE
+        if (ObjectCount > 0x400)
+            PrintLog("WARNING: object count %d exceeds the object limit", ObjectCount);
+#endif
+
+#if RETRO_USE_MOD_LOADER
+        int offsetCount = 0;
+        for (int m = 0; m < modObjCount; ++m)
+            if (modScriptFlags[m])
+                ++offsetCount;
+#endif
+
         Entity *object = &objectEntityList[32];
         for (int i = 0; i < ObjectCount; ++i) {
             FileRead(&fileBuffer, 1);
             object->type = fileBuffer;
+
+#if RETRO_USE_MOD_LOADER
+            if (loadGlobalScripts && offsetCount && object->type >= globalObjCount)
+                object->type += offsetCount; // offset it by our mod count
+#endif
 
             FileRead(&fileBuffer, 1);
             object->propertyValue = fileBuffer;
@@ -681,9 +759,9 @@ void LoadStageBackground()
 
         for (int i = 1; i < layerCount + 1; ++i) {
             FileRead(&fileBuffer, 1);
-            stageLayouts[i].width = fileBuffer;
+            stageLayouts[i].xsize = fileBuffer;
             FileRead(&fileBuffer, 1);
-            stageLayouts[i].height = fileBuffer;
+            stageLayouts[i].ysize = fileBuffer;
             FileRead(&fileBuffer, 1);
             stageLayouts[i].type = fileBuffer;
             FileRead(&fileBuffer, 1);
@@ -694,8 +772,7 @@ void LoadStageBackground()
             stageLayouts[i].scrollSpeed = fileBuffer << 10;
             stageLayouts[i].scrollPos   = 0;
 
-            
-            memset(stageLayouts[i].tiles, 0, TILELAYER_CHUNK_MAX * sizeof(ushort));
+            memset(stageLayouts[i].tiles, 0, TILELAYER_CHUNK_COUNT * sizeof(ushort));
             byte *lineScrollPtr = stageLayouts[i].lineScroll;
             memset(stageLayouts[i].lineScroll, 0, 0x7FFF);
 
@@ -721,9 +798,9 @@ void LoadStageBackground()
             }
 
             // Read Layout
-            for (int y = 0; y < stageLayouts[i].height; ++y) {
+            for (int y = 0; y < stageLayouts[i].ysize; ++y) {
                 ushort *chunks = &stageLayouts[i].tiles[y * 0x100];
-                for (int x = 0; x < stageLayouts[i].width; ++x) {
+                for (int x = 0; x < stageLayouts[i].xsize; ++x) {
                     FileRead(&fileBuffer, 1);
                     *chunks = fileBuffer << 8;
                     FileRead(&fileBuffer, 1);
@@ -752,13 +829,12 @@ void LoadStageChunks()
             tiles128x128.direction[i] = (byte)(entry[0] >> 2);
             entry[0] -= 4 * (entry[0] >> 2);
 
-            tiles128x128.tileIndex[i]  = entry[1] + (entry[0] << 8);
-#if RETRO_SOFTWARE_RENDER || RETRO_USING_C2D
-            tiles128x128.gfxDataPos[i] = tiles128x128.tileIndex[i] << 8;
-#endif
-#if RETRO_HARDWARE_RENDER && !RETRO_USING_C2D
-            tiles128x128.gfxDataPos[i] = tiles128x128.tileIndex[i] << 2;
-#endif
+            tiles128x128.tileIndex[i] = entry[1] + (entry[0] << 8);
+
+            if (renderType == RENDER_SW)
+                tiles128x128.gfxDataPos[i] = tiles128x128.tileIndex[i] << 8;
+            else if (renderType == RENDER_HW)
+                tiles128x128.gfxDataPos[i] = tiles128x128.tileIndex[i] << 2;
 
             tiles128x128.collisionFlags[0][i] = entry[2] >> 4;
             tiles128x128.collisionFlags[1][i] = entry[2] - ((entry[2] >> 4) << 4);
@@ -772,7 +848,7 @@ void LoadStageCollisions()
     if (LoadStageFile("CollisionMasks.bin", stageListPosition, &info)) {
 
         byte fileBuffer = 0;
-        int tileIndex  = 0;
+        int tileIndex   = 0;
         for (int t = 0; t < 1024; ++t) {
             for (int p = 0; p < 2; ++p) {
                 FileRead(&fileBuffer, 1);
@@ -894,7 +970,7 @@ void LoadStageCollisions()
                         id <<= 1;
                     }
 
-                    //LWall rotations
+                    // LWall rotations
                     for (int c = 0; c < TILE_SIZE; ++c) {
                         int h = 0;
                         while (h > -1) {
@@ -912,7 +988,7 @@ void LoadStageCollisions()
                         }
                     }
 
-                    //RWall rotations
+                    // RWall rotations
                     for (int c = 0; c < TILE_SIZE; ++c) {
                         int h = TILE_SIZE - 1;
                         while (h < TILE_SIZE) {
@@ -954,8 +1030,8 @@ void LoadStageGIFFile(int stageID)
         height += (fileBuffer << 8);
 
         FileRead(&fileBuffer, 1); // Palette Size
-        //int has_pallete = (fileBuffer & 0x80) >> 7;
-        //int colors = ((fileBuffer & 0x70) >> 4) + 1;
+        // int has_pallete = (fileBuffer & 0x80) >> 7;
+        // int colors = ((fileBuffer & 0x70) >> 4) + 1;
         int palette_size = (fileBuffer & 0x7) + 1;
         if (palette_size > 0)
             palette_size = 1 << palette_size;
@@ -963,8 +1039,7 @@ void LoadStageGIFFile(int stageID)
         FileRead(&fileBuffer, 1); // BG Colour index (thrown away)
         FileRead(&fileBuffer, 1); // Pixel aspect ratio (thrown away)
 
-        if (palette_size == 256)
-        {
+        if (palette_size == 256) {
             byte clr[3];
 
             for (int c = 0; c < 0x80; ++c) FileRead(clr, 3);
@@ -1084,30 +1159,24 @@ void SetLayerDeformation(int selectedDef, int waveLength, int waveWidth, int wav
         default: break;
     }
 
-#if RETRO_SOFTWARE_RENDER || RETRO_USING_C2D
     int shift = 9;
-#endif
-
-#if RETRO_HARDWARE_RENDER && !RETRO_USING_C2D
-    int shift = 5;
-#endif
+    if (renderType == RENDER_HW)
+        shift = 5;
 
     int id = 0;
     if (waveType == 1) {
-        id     = YPos;
+        id = YPos;
         for (int i = 0; i < waveSize; ++i) {
-            deformPtr[id] = waveWidth * sinVal512[(i << 9) / waveLength & 0x1FF] >> shift;
+            deformPtr[id] = waveWidth * sin512LookupTable[(i << 9) / waveLength & 0x1FF] >> shift;
             ++id;
         }
     }
     else {
         for (int i = 0; i < 0x200 * 0x100; i += 0x200) {
-            int val       = waveWidth * sinVal512[i / waveLength & 0x1FF] >> shift;
+            int val       = waveWidth * sin512LookupTable[i / waveLength & 0x1FF] >> shift;
             deformPtr[id] = val;
-#if RETRO_SOFTWARE_RENDER || RETRO_USING_C2D
-            if (deformPtr[id] >= waveWidth)
+            if (deformPtr[id] >= waveWidth && renderType == RENDER_SW)
                 deformPtr[id] = waveWidth - 1;
-#endif
             ++id;
         }
     }
@@ -1390,13 +1459,13 @@ void SetPlayerScreenPositionCDStyle(Player *player)
     }
     if (!player->gravity) {
         if (player->boundEntity->direction) {
-            if (cameraStyle == 3 || player->speed < -0x5F5C2)
+            if (cameraStyle == CAMERASTYLE_EXTENDED_OFFSET_R || player->speed < -0x5F5C2)
                 cameraLagStyle = 2;
             else
                 cameraLagStyle = 0;
         }
         else {
-            cameraLagStyle = (cameraStyle == 2 || player->speed > 0x5F5C2) != 0;
+            cameraLagStyle = (cameraStyle == CAMERASTYLE_EXTENDED_OFFSET_L || player->speed > 0x5F5C2) != 0;
         }
     }
     if (cameraLagStyle) {
@@ -1412,21 +1481,50 @@ void SetPlayerScreenPositionCDStyle(Player *player)
         cameraLag += cameraLag < 0 ? 2 : 0;
         if (cameraLag > 0)
             cameraLag -= 2;
+    }    
+	int xscrollA     = xScrollA;
+    int xscrollB     = xScrollB;
+    int scrollAmount = playerXPos - (SCREEN_CENTERX + xScrollA + cameraLag);
+    if (abs(playerXPos - (SCREEN_CENTERX + xScrollA) - cameraLag) >= 25) {
+        if (scrollAmount <= 0)
+            xscrollA -= 16;
+        else
+            xscrollA += 16;
+        xscrollB = SCREEN_XSIZE + xscrollA;
     }
-    if (playerXPos <= cameraLag + SCREEN_CENTERX + xBoundary1) {
-        player->screenXPos = cameraShakeX + playerXPos - xBoundary1;
-        xScrollOffset      = xBoundary1 - cameraShakeX;
+    else {
+        if (playerXPos - cameraLag > SCREEN_SCROLL_RIGHT + xscrollA) {
+            xscrollA = playerXPos - SCREEN_SCROLL_RIGHT - cameraLag;
+            xscrollB = SCREEN_XSIZE + playerXPos - SCREEN_SCROLL_RIGHT - cameraLag;
+        }
+        if (playerXPos < cameraLag + SCREEN_SCROLL_LEFT + xscrollA) {
+            xscrollA = playerXPos - SCREEN_SCROLL_LEFT - cameraLag;
+            xscrollB = SCREEN_XSIZE + playerXPos - SCREEN_SCROLL_LEFT - cameraLag;
+        }
+    }
+    if (xscrollA < xBoundary1) {
+        xscrollA = xBoundary1;
+        xscrollB = xBoundary1 + SCREEN_XSIZE;
+    }
+    if (xscrollB > xBoundary2) {
+        xscrollB = xBoundary2;
+        xscrollA = xBoundary2 - SCREEN_XSIZE;
+    }
+
+    xScrollA = xscrollA;
+    xScrollB = xscrollB;
+    if (playerXPos <= cameraLag + SCREEN_CENTERX + xScrollA) {
+        player->screenXPos = cameraShakeX + playerXPos - xScrollA;
+        xScrollOffset      = xScrollA - cameraShakeX;
     }
     else {
         xScrollOffset      = cameraShakeX + playerXPos - SCREEN_CENTERX - cameraLag;
         player->screenXPos = cameraLag + SCREEN_CENTERX - cameraShakeX;
-        if (playerXPos - cameraLag > xBoundary2 - SCREEN_CENTERX) {
-            player->screenXPos = cameraShakeX + SCREEN_CENTERX + playerXPos - (xBoundary2 - SCREEN_CENTERX);
-            xScrollOffset      = xBoundary2 - SCREEN_XSIZE - cameraShakeX;
+        if (playerXPos - cameraLag > xScrollB - SCREEN_CENTERX) {
+            player->screenXPos = cameraShakeX + SCREEN_CENTERX + playerXPos - (xScrollB - SCREEN_CENTERX);
+            xScrollOffset      = xScrollB - SCREEN_XSIZE - cameraShakeX;
         }
     }
-    xScrollA         = xScrollOffset;
-    xScrollB         = SCREEN_XSIZE + xScrollOffset;
     int yscrollA     = yScrollA;
     int yscrollB     = yScrollB;
     int adjustY      = cameraAdjustY + playerYPos;
@@ -1658,10 +1756,10 @@ void SetPlayerLockedScreenPosition(Player *player)
         }
     }
 
-    int yscrollA     = yScrollA;
-    int yscrollB     = yScrollB;
-    int adjustY      = cameraAdjustY + playerYPos;
-    //int adjustOffset = player->lookPos + adjustY - (yScrollA + SCREEN_SCROLL_UP);
+    int yscrollA = yScrollA;
+    int yscrollB = yScrollB;
+    int adjustY  = cameraAdjustY + playerYPos;
+    // int adjustOffset = player->lookPos + adjustY - (yScrollA + SCREEN_SCROLL_UP);
     if (player->lookPos + adjustY <= yScrollA + SCREEN_SCROLL_UP) {
         player->screenYPos = adjustY - yScrollA - cameraShakeY;
         yScrollOffset      = cameraShakeY + yscrollA;

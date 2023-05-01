@@ -11,7 +11,7 @@ enum InputButtons {
     INPUT_BUTTONC,
     INPUT_START,
     INPUT_ANY,
-    INPUT_MAX,
+    INPUT_BUTTONCOUNT,
 };
 
 struct InputData {
@@ -24,20 +24,6 @@ struct InputData {
     bool C;
     bool start;
 };
-
-#if RETRO_PLATFORM == RETRO_3DS
-const unsigned int _3DSKeys[8] = {
-	KEY_UP,
-	KEY_DOWN,
-	KEY_LEFT,
-	KEY_RIGHT,
-	KEY_A,
-	KEY_B,
-	KEY_Y,
-	KEY_START
-};
-const int keyCount = 8;
-#endif
 
 struct InputButton {
     bool press, hold;
@@ -57,6 +43,11 @@ struct InputButton {
     inline bool down() { return (press || hold); }
 };
 
+enum DefaultHapticIDs {
+    HAPTIC_NONE = -2,
+    HAPTIC_STOP = -1,
+};
+
 extern InputData keyPress;
 extern InputData keyDown;
 
@@ -68,17 +59,22 @@ extern int touchY[8];
 extern int touchID[8];
 extern int touches;
 
-extern InputButton inputDevice[INPUT_MAX];
+extern int hapticEffectNum;
+
+#if !RETRO_USE_ORIGINAL_CODE
+extern InputButton inputDevice[INPUT_BUTTONCOUNT];
 extern int inputType;
 
-extern int LSTICK_DEADZONE;
-extern int RSTICK_DEADZONE;
-extern int LTRIGGER_DEADZONE;
-extern int RTRIGGER_DEADZONE;
+extern float LSTICK_DEADZONE;
+extern float RSTICK_DEADZONE;
+extern float LTRIGGER_DEADZONE;
+extern float RTRIGGER_DEADZONE;
 
+extern int mouseHideTimer;
+#endif
+
+#if !RETRO_USE_ORIGINAL_CODE
 #if RETRO_USING_SDL2
-extern SDL_GameController *controller;
-
 // Easier this way
 enum ExtraSDLButtons {
     SDL_CONTROLLER_BUTTON_ZL = SDL_CONTROLLER_BUTTON_MAX + 1,
@@ -94,18 +90,8 @@ enum ExtraSDLButtons {
     SDL_CONTROLLER_BUTTON_MAX_EXTRA,
 };
 
-inline void controllerInit(byte controllerID)
-{
-    inputType  = 1;
-    controller = SDL_GameControllerOpen(controllerID);
-};
-
-inline void controllerClose(byte controllerID)
-{
-    if (controllerID >= 2)
-        return;
-    inputType = 0;
-}
+void ControllerInit(byte controllerID);
+void ControllerClose(byte controllerID);
 #endif
 
 #if RETRO_USING_SDL1
@@ -115,10 +101,22 @@ extern SDL_Joystick *controller;
 #endif
 
 void ProcessInput();
+#endif
 
 void CheckKeyPress(InputData *input, byte Flags);
 void CheckKeyDown(InputData *input, byte Flags);
 
+#if RETRO_USE_HAPTICS
+inline int GetHapticEffectNum()
+{
+    int num         = hapticEffectNum;
+    hapticEffectNum = HAPTIC_NONE;
+    return num;
+}
 void QueueHapticEffect(int hapticID);
+void PlayHaptics(int left, int right, int power);
+void PlayHapticsID(int hapticID);
+void StopHaptics(int hapticID);
+#endif
 
 #endif // !INPUT_H
