@@ -32,7 +32,7 @@ realtime palettes are supported.  However, its rather CPU-intensive, and require
 full-speed.  HW builds use a completely custom Citro2D-based backend, using the 3DS's PICA200
 to get graphics on-screen, and thus can run at full-speed on O3DS systems, in addition to 
 supporting features like stereosopic 3D, however, certain features like realtime palettes aren't 
-supported. tl;dr use HW if on O3DS or if you care about 3D, use SW if on N3DS.
+supported. tl;dr use HW if on O3DS or if you care about 3D, use SW if on N3DS. SW Is recommened for Restored to work properly.
 
 ### Q: Why is the port separated into HW and SW builds?
 A: Because that's how the base decomp was set up initially, at the time the port was started.
